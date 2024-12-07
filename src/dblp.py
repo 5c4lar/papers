@@ -1,4 +1,4 @@
-#%%
+# %%
 import json
 import requests
 
@@ -9,6 +9,8 @@ CONFERENCE = {
     "CCS": "ccs",
     "NDSS": "ndss"
 }
+
+
 def get_json(conf, year):
     url = TEMPLATE.format(conf=conf, year=year, format="json")
     res = requests.get(url)

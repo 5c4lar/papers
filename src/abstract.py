@@ -8,12 +8,15 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlparse, urlunparse
 import logging
 
+
 def get_id(url):
     parsed_url = urlparse(url)
     doi = parsed_url.path.lstrip("/")  # Remove the leading "/"
     return doi
 
+
 logger = logging.getLogger("PaperAbstract")
+
 
 class BasePaperAbstract(ABC):
     @abstractmethod
@@ -32,7 +35,8 @@ class SemanticScholarAbstract(BasePaperAbstract):
             return abstract
         else:
             return None
-        
+
+
 class AbstractNDSS(BasePaperAbstract):
     def get_abstract(self, url, authors):
         logger.debug(f'URL: {url}')
@@ -46,7 +50,8 @@ class AbstractNDSS(BasePaperAbstract):
             paper_data.find_next('p').replace_with('')
             return paper_data.text.rstrip().lstrip()
         else:
-            abstract_paragraphs = html.find(string=re.compile("Abstract:")).find_next(recursive=False)
+            abstract_paragraphs = html.find(string=re.compile(
+                "Abstract:")).find_next(recursive=False)
             return abstract_paragraphs.get_text(separator='\n')
 
 
@@ -58,7 +63,8 @@ class AbstractUSENIX(BasePaperAbstract):
 
         html = BeautifulSoup(r.text, 'html.parser')
 
-        abstract_paragraphs = html.find(string=re.compile("Abstract:")).find_next(recursive=False)
+        abstract_paragraphs = html.find(string=re.compile(
+            "Abstract:")).find_next(recursive=False)
         return abstract_paragraphs.get_text(separator='\n')
 
 
@@ -70,8 +76,10 @@ class AbstractCCS(BasePaperAbstract):
         assert r.status_code == 200
 
         html = BeautifulSoup(r.text, 'html.parser')
-        paragraphs = html.find('section', {'id': 'abstract'}).find_all('div', role='paragraph')
+        paragraphs = html.find('section', {'id': 'abstract'}).find_all(
+            'div', role='paragraph')
         return '\n'.join(paragraph.get_text(strip=True) for paragraph in paragraphs)
+
 
 NDSS = AbstractNDSS()
 SP = SemanticScholarAbstract()
@@ -82,6 +90,7 @@ Abstracts = {'ndss': NDSS,
              'sp': SP,
              'uss': USENIX,
              'ccs': CCS}
+
 
 def get_abstract(conf, url):
     extractor = Abstracts[conf]
@@ -95,12 +104,11 @@ def process_paper(args):
         abstract = get_abstract(conf, url)
         return {"title": paper['info']['title'], 'abstract': abstract}
     except Exception as e:
-        logger.error(f"Failed to process: {paper['info']['title']}, url: {url}")
+        logger.error(f"Failed to process: {
+                     paper['info']['title']}, url: {url}")
         print(e)
         return None
-    
-    
-    
+
 
 if __name__ == '__main__':
     logger.setLevel('DEBUG')
@@ -109,4 +117,5 @@ if __name__ == '__main__':
     # print(SP.get_abstract('https://doi.org/10.1109/SP54263.2024.00030', []))
     # print(USENIX.get_abstract('https://www.usenix.org/conference/usenixsecurity24/presentation/zou', []))
     # print(CCS.get_abstract('https://doi.org/10.1145/3576915.3616615', []))
-    print(NDSS.get_abstract('https://www.ndss-symposium.org/ndss-paper/unus-pro-omnibus-multi-client-searchable-encryption-via-access-control/', []))
+    print(NDSS.get_abstract(
+        'https://www.ndss-symposium.org/ndss-paper/unus-pro-omnibus-multi-client-searchable-encryption-via-access-control/', []))
