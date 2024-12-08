@@ -1,6 +1,3 @@
-"""
-Test: python3 -m top4grep.abstract
-"""
 import re
 import requests
 from abc import ABC, abstractmethod
