@@ -1,0 +1,4 @@
+requests
+openai
+datasets
+beautifulsoup4
