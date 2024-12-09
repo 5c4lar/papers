@@ -1,14 +1,16 @@
 import argparse
 import json
 from typing import Any, Dict, List
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import aisuite as ai
 import datasets
 import instructor
-from src.config import AisuiteConfig, InstructorConfig, ModelConfig, OpenaiConfig
 from openai import OpenAI
 from pydantic import BaseModel
 from tqdm import tqdm
+
+from src.utils import call_llm
+from src.config import InstructorConfig, OpenaiConfig
 
 
 class RelevanceCheck(BaseModel):
@@ -16,19 +18,16 @@ class RelevanceCheck(BaseModel):
 
 
 class PaperSemanticSearch:
-    def __init__(self, dataset_path: str):
+    def __init__(self, dataset_path: str, max_workers: int = 5):
         """
         Initialize the semantic search engine
 
         Args:
             dataset_path: Path to the datasets file
-            openai_api_key: OpenAI API key. If not provided, will try to get from environment
+            max_workers: Maximum number of concurrent threads
         """
         self.dataset = datasets.load_from_disk(dataset_path)
-        self.client = OpenAI(
-            api_key=OpenaiConfig.api_key,
-            base_url=OpenaiConfig.base_url,
-        )
+        self.max_workers = max_workers
 
     def _get_paper_content(self, paper: Dict[str, Any]) -> str:
         """Get formatted paper content for comparison"""
@@ -36,7 +35,10 @@ class PaperSemanticSearch:
                 Abstract: {paper.get('abstract', 'N/A')}"""
 
     def _extract_relevance_check(self, prompt: str) -> RelevanceCheck:
-        client = instructor.from_openai(OpenAI(base_url=OpenaiConfig.base_url))
+        client = instructor.from_openai(
+            OpenAI(base_url=OpenaiConfig.base_url, api_key=OpenaiConfig.api_key)
+        )
+
         response = client.chat.completions.create(
             model=InstructorConfig.model_name,
             response_model=RelevanceCheck,
@@ -61,48 +63,56 @@ class PaperSemanticSearch:
                     {paper_content}
                     Please respond with only 'yes' if the paper is relevant, or 'no' if it's not relevant."""
 
-        provider_configs = {
-            "openai": {
-                "base_url": OpenaiConfig.base_url,
-                "api_key": OpenaiConfig.api_key,
-            }
-        }
-        client = ai.Client(provider_configs=provider_configs)
-
         messages = [
             {"role": "user", "content": prompt},
         ]
-        response = client.chat.completions.create(
-            model=AisuiteConfig.model_name,
+        response = call_llm(
             messages=messages,
-            temperature=ModelConfig.temperature,
         )
-        return self._extract_relevance_check(response.choices[0].message.content)
+        return self._extract_relevance_check(response)
 
     def search(self, query: str) -> List[Dict[str, Any]]:
         """
-        Search for relevant papers based on the query
+        Search for relevant papers based on the query using multiple threads
 
         Args:
             query: Search query or description of the topic
-            max_papers: Maximum number of papers to return
 
         Returns:
             List of relevant papers
         """
         relevant_papers = []
+        papers_list = list(self.dataset)
 
-        for paper in tqdm(self.dataset, desc="Searching papers"):
+        def process_paper(paper):
             paper_content = self._get_paper_content(paper)
+            try:
+                if self._check_relevance(query, paper_content).relevant:
+                    return {
+                        "title": paper.get("title", "N/A"),
+                        "abstract": paper.get("abstract", "N/A"),
+                        "year": paper.get("year", "N/A"),
+                        "conf": paper.get("conf", "N/A"),
+                    }
+            except Exception as e:
+                print(
+                    f"Error processing paper {paper.get('title', 'Unknown')}: {str(e)}"
+                )
+            return None
 
-            if self._check_relevance(query, paper_content).relevant:
-                paper_dict = {
-                    "title": paper.get("title", "N/A"),
-                    "abstract": paper.get("abstract", "N/A"),
-                    "year": paper.get("year", "N/A"),
-                    "conf": paper.get("conf", "N/A"),
-                }
-                relevant_papers.append(paper_dict)
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # 提交所有任务
+            future_to_paper = {
+                executor.submit(process_paper, paper): paper for paper in papers_list
+            }
+
+            # 使用tqdm显示进度
+            with tqdm(total=len(papers_list), desc="Searching papers") as pbar:
+                for future in as_completed(future_to_paper):
+                    result = future.result()
+                    if result:
+                        relevant_papers.append(result)
+                    pbar.update(1)
 
         return relevant_papers
 
@@ -120,10 +130,18 @@ def main():
     parser.add_argument(
         "--output", type=str, required=True, help="Path to the output file"
     )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=5,
+        help="Maximum number of concurrent threads",
+    )
 
     args = parser.parse_args()
 
-    searcher = PaperSemanticSearch(dataset_path=args.dataset)
+    searcher = PaperSemanticSearch(
+        dataset_path=args.dataset, max_workers=args.max_workers
+    )
 
     query = args.query
     results = searcher.search(query)
@@ -131,8 +149,7 @@ def main():
     print(f"\nFound {len(results)} relevant papers:")
     for i, paper in enumerate(results, 1):
         print(f"\n{i}. {paper['title']}")
-        print(f"Venue: {paper['venue']} ({paper['year']})")
-        print(f"URL: {paper['url']}")
+        print(f"conf: {paper['conf']} ({paper['year']})")
         print(
             "Abstract:",
             paper["abstract"][:200] + "..."

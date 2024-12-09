@@ -13,5 +13,5 @@ python3 src/concat.py --datasets data/uss24 data/sp24 data/ccs24 data/ndss24 --o
 # classify papers
 python3 -m src.label --dataset data/24 --output data/24_label                        
 # search papers
-python3 -m src.search --dataset data/ndss24 --query "papers about llm security" --output data/ndss24_search
+python3 -m src.search --dataset data/ndss24 --query "papers about llm security" --output data/ndss24_search.jsonl --max-workers 10
 ```

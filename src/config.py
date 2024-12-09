@@ -2,7 +2,7 @@ import os
 
 
 class ModelConfig:
-    temperature: float = 0.7
+    temperature: float = 0.3
 
 
 class OpenaiConfig:
