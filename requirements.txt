@@ -2,3 +2,5 @@ requests
 openai
 datasets
 beautifulsoup4
+aisuite
+instructor
