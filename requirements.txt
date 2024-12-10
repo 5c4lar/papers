@@ -4,3 +4,4 @@ datasets
 beautifulsoup4
 aisuite
 instructor
+notion-client
