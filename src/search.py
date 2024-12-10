@@ -101,12 +101,10 @@ class PaperSemanticSearch:
             return None
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            # 提交所有任务
             future_to_paper = {
                 executor.submit(process_paper, paper): paper for paper in papers_list
             }
 
-            # 使用tqdm显示进度
             with tqdm(total=len(papers_list), desc="Searching papers") as pbar:
                 for future in as_completed(future_to_paper):
                     result = future.result()
